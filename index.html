@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gift of Adoption – Chapter Growth Map</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Trebuchet MS', Georgia, serif;
+    background: #FAF8FB;
+    min-height: 100vh;
+    padding: 16px;
+    color: #333;
+  }
+  :root {
+    --purple: #6B2D8B;
+    --purple-light: #9B5BB5;
+    --purple-pale: #EDE3F4;
+    --purple-border: #E5D5ED;
+    --purple-lilac: #D8B4FE;
+    --red: #C0272D;
+    --red-light: #E05055;
+    --inactive: #C8BFC7;
+    --bg: #FAF8FB;
+  }
+
+  /* ── Layout ── */
+  .header { text-align: center; margin-bottom: 14px; }
+  .header-inner { display: inline-flex; align-items: center; gap: 10px; }
+  .heart-badge {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--purple);
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 20px;
+  }
+  .header h1 { font-size: 20px; font-weight: 800; color: var(--purple); letter-spacing: -0.5px; }
+  .header p  { font-size: 11px; color: #888; letter-spacing: 2px; text-transform: uppercase; }
+
+  .layout { display: flex; gap: 14px; max-width: 1100px; margin: 0 auto; align-items: flex-start; }
+  .left  { flex: 1; min-width: 0; }
+  .right { width: 210px; flex-shrink: 0; }
+
+  /* ── Stats bar ── */
+  .stats-bar {
+    background: var(--purple); border-radius: 10px;
+    padding: 10px 18px; margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .stats-bar .stat-label { color: var(--purple-lilac); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; }
+  .stats-bar .stat-value { color: white; font-size: 30px; font-weight: 800; line-height: 1; }
+  .stats-bar .new-label  { color: var(--purple-lilac); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+  .stats-bar .new-value  { color: #E9D5FF; font-size: 14px; font-weight: 700; line-height: 1.3; }
+  .stats-center { flex: 1; text-align: center; padding: 0 12px; }
+
+  /* ── Toggles ── */
+  .toggles { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+  .toggle-btn {
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 12px 5px 8px; border-radius: 20px;
+    border: 1.5px solid #DDD; background: white;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+  }
+  .toggle-btn.on-purple { border-color: var(--purple); background: rgba(107,45,139,0.07); }
+  .toggle-btn.on-red    { border-color: var(--red);    background: rgba(192,39,45,0.07); }
+  .toggle-track {
+    width: 28px; height: 16px; border-radius: 8px;
+    background: #CCC; position: relative; transition: background 0.2s; flex-shrink: 0;
+  }
+  .toggle-btn.on-purple .toggle-track { background: var(--purple); }
+  .toggle-btn.on-red    .toggle-track { background: var(--red); }
+  .toggle-thumb {
+    width: 12px; height: 12px; border-radius: 50%; background: white;
+    position: absolute; top: 2px; left: 2px;
+    transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .toggle-btn.on-purple .toggle-thumb,
+  .toggle-btn.on-red    .toggle-thumb { left: 14px; }
+  .toggle-label { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: #999; }
+  .toggle-btn.on-purple .toggle-label { color: var(--purple); }
+  .toggle-btn.on-red    .toggle-label { color: var(--red); }
+
+  /* ── Map ── */
+  .map-wrap {
+    background: white; border-radius: 10px;
+    border: 1px solid var(--purple-border);
+    padding: 8px; margin-bottom: 10px;
+    box-shadow: 0 2px 12px rgba(107,45,139,0.08);
+  }
+  #map-svg { display: block; width: 100%; height: auto; }
+  .map-loading { padding: 80px 0; text-align: center; color: #bbb; font-size: 13px; }
+
+  /* ── Legend ── */
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-bottom: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #555; }
+  .legend-swatch { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; }
+
+  /* ── Slider ── */
+  .slider-wrap { padding: 0 6px; }
+  .slider-wrap input[type=range] { width: 100%; accent-color: var(--purple); }
+  .slider-labels { display: flex; justify-content: space-between; font-size: 11px; color: #aaa; }
+  .slider-labels .mid { color: var(--purple); font-weight: 700; }
+
+  /* ── Year pills ── */
+  .year-pills { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .pill {
+    padding: 4px 11px; border-radius: 20px; border: none; cursor: pointer;
+    font-size: 12px; font-weight: 500; font-family: inherit;
+    background: var(--purple-pale); color: var(--purple); transition: all 0.2s;
+  }
+  .pill.active { background: var(--purple); color: white; font-weight: 800; }
+
+  /* ── Right panel cards ── */
+  .card {
+    background: white; border: 1px solid var(--purple-border);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 12px;
+  }
+  .card-title {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: #999; font-weight: 700; margin-bottom: 6px;
+  }
+  .chapter-list { max-height: 300px; overflow-y: auto; }
+  .chapter-row {
+    display: flex; justify-content: space-between;
+    padding: 3px 0; font-size: 12px; border-bottom: 1px solid #F9F4FB;
+  }
+  .chapter-row .name { color: #444; }
+  .chapter-row .name.new { color: var(--purple); font-weight: 800; }
+  .chapter-row .name.emerging { color: var(--red); }
+  .chapter-row .year { color: #bbb; font-size: 11px; }
+  .chapter-row .year.new { color: var(--purple-light); }
+  .emerging-header {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--red); font-weight: 700; margin-top: 8px; margin-bottom: 3px;
+  }
+
+  /* ── Edit panel ── */
+  .edit-hint { font-size: 10px; color: #888; margin-bottom: 5px; line-height: 1.5; }
+  .edit-hint code { background: #F3EBF8; padding: 1px 3px; border-radius: 3px; font-size: 10px; }
+  .edit-hint code.red { background: #FFF0F0; }
+  textarea {
+    width: 100%; font-size: 11px; padding: 6px;
+    border: 1.5px solid var(--purple-lilac); border-radius: 7px;
+    font-family: monospace; resize: vertical; outline: none; color: #333;
+  }
+  textarea.error { border-color: #EF4444; }
+  .error-msg { color: #EF4444; font-size: 10px; margin-top: 3px; }
+  .btn-row { display: flex; gap: 6px; margin-top: 6px; }
+  .btn {
+    padding: 7px 10px; border-radius: 7px; border: none; cursor: pointer;
+    font-size: 12px; font-weight: 700; font-family: inherit; transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { flex: 1; background: var(--purple); color: white; }
+  .btn-ghost   { background: white; color: var(--purple); border: 1px solid var(--purple-lilac) !important; border: none; }
+  .btn-edit    { width: 100%; background: var(--purple-pale); color: var(--purple); }
+  .btn-export  { width: 100%; background: var(--purple-pale); color: var(--purple); margin-bottom: 6px; }
+
+  /* ── Export buttons ── */
+  .export-wrap { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+
+  @media (max-width: 700px) {
+    .layout { flex-direction: column; }
+    .right { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="heart-badge">♥</div>
+    <div>
+      <h1>Gift of Adoption</h1>
+      <p>Chapter Growth Map</p>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="left">
+    <div class="stats-bar">
+      <div>
+        <div class="stat-label">Year</div>
+        <div class="stat-value" id="stat-year">—</div>
+      </div>
+      <div class="stats-center" id="stats-new"></div>
+      <div style="text-align:right">
+        <div class="stat-label">Chapters</div>
+        <div class="stat-value" id="stat-count">0</div>
+      </div>
+    </div>
+
+    <div class="toggles">
+      <button class="toggle-btn on-purple" id="toggle-chapters" onclick="toggleChapters()">
+        <div class="toggle-track"><div class="toggle-thumb"></div></div>
+        <span class="toggle-label">Chapters</span>
+      </button>
+      <button class="toggle-btn" id="toggle-emerging" onclick="toggleEmerging()">
+        <div class="toggle-track"><div class="toggle-thumb"></div></div>
+        <span class="toggle-label">Emerging</span>
+      </button>
+    </div>
+
+    <div class="map-wrap">
+      <div class="map-loading" id="map-loading">Loading map data…</div>
+      <svg id="map-svg" viewBox="0 0 960 600" style="display:none"></svg>
+    </div>
+
+    <div class="legend" id="legend"></div>
+
+    <div class="slider-wrap">
+      <input type="range" id="year-slider" min="2002" max="2025" value="2025" oninput="onSlider(this.value)" />
+      <div class="slider-labels">
+        <span id="slider-min">2002</span>
+        <span class="mid" id="slider-mid">2025</span>
+        <span id="slider-max">2025</span>
+      </div>
+    </div>
+
+    <div class="year-pills" id="year-pills"></div>
+  </div>
+
+  <div class="right">
+    <div class="card">
+      <div class="card-title" id="list-title">Active (0)</div>
+      <div class="chapter-list" id="chapter-list"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Export</div>
+      <div class="export-wrap">
+        <button class="btn btn-export" onclick="exportSVG()">⬇ Download SVG</button>
+        <button class="btn btn-export" onclick="exportPNG()">⬇ Download PNG (2×)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Chapter Data</div>
+      <div id="edit-view">
+        <button class="btn btn-edit" onclick="openEdit()">Edit Data</button>
+      </div>
+      <div id="edit-panel" style="display:none">
+        <div class="edit-hint">
+          One per line:<br>
+          <code>ST,YEAR</code> &nbsp; or &nbsp; <code class="red">ST,YEAR,emerging</code>
+        </div>
+        <textarea id="edit-textarea" rows="14"></textarea>
+        <div class="error-msg" id="edit-error" style="display:none"></div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="applyEdit()">Apply</button>
+          <button class="btn btn-ghost" onclick="closeEdit()">✕</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Data ──────────────────────────────────────────────────────────────────────
+const RAW_CHAPTERS = [
+  { states:["FL"],            year:2002, type:"chapter" },
+  { states:["WI"],            year:2002, type:"chapter" },
+  { states:["IL"],            year:2003, type:"chapter" },
+  { states:["OR"],            year:2003, type:"chapter" },
+  { states:["MN"],            year:2006, type:"chapter" },
+  { states:["OH"],            year:2011, type:"chapter" },
+  { states:["NC","SC"],       year:2012, type:"chapter" },
+  { states:["CO"],            year:2013, type:"chapter" },
+  { states:["TX"],            year:2014, type:"chapter" },
+  { states:["CT"],            year:2014, type:"chapter" },
+  { states:["NH"],            year:2016, type:"chapter" },
+  { states:["MI"],            year:2016, type:"chapter" },
+  { states:["TN"],            year:2016, type:"chapter" },
+  { states:["WA"],            year:2016, type:"chapter" },
+  { states:["NE"],            year:2017, type:"chapter" },
+  { states:["GA"],            year:2017, type:"chapter" },
+  { states:["NY"],            year:2017, type:"chapter" },
+  { states:["PA"],            year:2017, type:"chapter" },
+  { states:["DC","MD","VA"],  year:2017, type:"chapter" },
+  { states:["AZ"],            year:2017, type:"chapter" },
+  { states:["CA"],            year:2018, type:"chapter" },
+  { states:["AL"],            year:2019, type:"chapter" },
+  { states:["MO"],            year:2019, type:"chapter" },
+  { states:["MA"],            year:2019, type:"chapter" },
+  { states:["KY"],            year:2020, type:"chapter" },
+  { states:["IN"],            year:2021, type:"chapter" },
+  { states:["SC"],            year:2022, type:"chapter" },
+  { states:["VA"],            year:2023, type:"chapter" },
+  { states:["UT"],            year:2023, type:"chapter" },
+  { states:["ID"],            year:2025, type:"chapter" },
+];
+
+const FIPS = {
+  "01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT",
+  "10":"DE","11":"DC","12":"FL","13":"GA","15":"HI","16":"ID","17":"IL","18":"IN",
+  "19":"IA","20":"KS","21":"KY","22":"LA","23":"ME","24":"MD","25":"MA",
+  "26":"MI","27":"MN","28":"MS","29":"MO","30":"MT","31":"NE","32":"NV",
+  "33":"NH","34":"NJ","35":"NM","36":"NY","37":"NC","38":"ND","39":"OH",
+  "40":"OK","41":"OR","42":"PA","44":"RI","45":"SC","46":"SD","47":"TN",
+  "48":"TX","49":"UT","50":"VT","51":"VA","53":"WA","54":"WV","55":"WI","56":"WY"
+};
+
+const ALL_STATES = Object.values(FIPS);
+
+const C = {
+  PURPLE:"#6B2D8B", PURPLE_L:"#9B5BB5", RED:"#C0272D", RED_L:"#E05055", INACTIVE:"#C8BFC7"
+};
+
+function buildMap(rows) {
+  const m = {};
+  rows.forEach(({states, year, type}) => states.forEach(s => { m[s] = {year, type}; }));
+  return m;
+}
+
+function mapToText(m) {
+  return Object.entries(m)
+    .sort((a,b) => a[1].year - b[1].year || a[0].localeCompare(b[0]))
+    .map(([s,{year,type}]) => `${s},${year}${type==="emerging"?",emerging":""}`)
+    .join("\n");
+}
+
+function parseText(txt) {
+  const rows = [];
+  txt.trim().split("\n").forEach(line => {
+    const p = line.trim().split(",");
+    if (p.length < 2) return;
+    const s = p[0].trim().toUpperCase();
+    const y = parseInt(p[1].trim());
+    const t = p[2]?.trim() === "emerging" ? "emerging" : "chapter";
+    if (ALL_STATES.includes(s) && !isNaN(y)) rows.push({states:[s], year:y, type:t});
+  });
+  return buildMap(rows);
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let stateMap    = buildMap(RAW_CHAPTERS);
+let selectedYear= 2025;
+let showChapters= true;
+let showEmerging= false;
+let topoUS      = null;
+let geoPath     = null;
+let projection  = null;
+
+const years = [...new Set(Object.values(stateMap).map(v=>v.year))].sort((a,b)=>a-b);
+
+// ── Map rendering ─────────────────────────────────────────────────────────────
+async function initMap() {
+  topoUS = await fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(r=>r.json());
+  document.getElementById("map-loading").style.display = "none";
+  const svg = document.getElementById("map-svg");
+  svg.style.display = "block";
+
+  const features = topojson.feature(topoUS, topoUS.objects.states);
+  const W = 960, H = 600;
+  projection = d3.geoAlbersUsa().fitSize([W, H], features);
+  geoPath    = d3.geoPath().projection(projection);
+
+  const s = d3.select(svg);
+
+  // State paths
+  s.selectAll("path.state")
+    .data(features.features)
+    .enter().append("path")
+    .attr("class", d => "state s-" + (FIPS[String(d.id).padStart(2,"0")] || "XX"))
+    .attr("d", geoPath)
+    .attr("stroke", "white")
+    .attr("stroke-width", 0.7);
+
+  // Borders
+  s.append("path")
+    .datum(topojson.mesh(topoUS, topoUS.objects.states, (a,b)=>a!==b))
+    .attr("fill","none").attr("stroke","white").attr("stroke-width",0.5)
+    .attr("d", geoPath);
+
+  // Labels
+  const small = ["RI","CT","DE","NH","VT","NJ","MD","MA","DC"];
+  s.selectAll("text.lbl")
+    .data(features.features)
+    .enter().append("text")
+    .attr("class","lbl")
+    .attr("transform", d => {
+      const c = geoPath.centroid(d);
+      return isNaN(c[0]) ? "translate(-999,-999)" : `translate(${c})`;
+    })
+    .attr("text-anchor","middle").attr("dominant-baseline","middle")
+    .attr("fill","white").attr("font-family","'Trebuchet MS',sans-serif")
+    .attr("font-weight","700").attr("pointer-events","none")
+    .attr("font-size", d => small.includes(FIPS[String(d.id).padStart(2,"0")]) ? "4.5" : "7")
+    .text(d => FIPS[String(d.id).padStart(2,"0")] || "");
+
+  render();
+}
+
+function getFill(abbr) {
+  const entry = stateMap[abbr];
+  if (!entry) return C.INACTIVE;
+  const {year, type} = entry;
+  if (type === "emerging") {
+    if (!showEmerging) return C.INACTIVE;
+    if (year > selectedYear) return C.INACTIVE;
+    return year === selectedYear ? C.RED_L : C.RED;
+  }
+  if (!showChapters) return C.INACTIVE;
+  if (year > selectedYear) return C.INACTIVE;
+  return year === selectedYear ? C.PURPLE_L : C.PURPLE;
+}
+
+function render() {
+  // Update fills
+  d3.select("#map-svg").selectAll("path.state").attr("fill", d => {
+    const abbr = FIPS[String(d.id).padStart(2,"0")];
+    return abbr ? getFill(abbr) : C.INACTIVE;
+  });
+
+  // Stats
+  const active   = Object.entries(stateMap).filter(([,{year,type}]) => year<=selectedYear && type==="chapter" && showChapters);
+  const emerging = Object.entries(stateMap).filter(([,{year,type}]) => year<=selectedYear && type==="emerging" && showEmerging);
+  const newThis  = Object.entries(stateMap).filter(([,{year}]) => year===selectedYear);
+
+  document.getElementById("stat-year").textContent  = selectedYear;
+  document.getElementById("stat-count").textContent = active.length;
+
+  const nc = document.getElementById("stats-new");
+  if (newThis.length) {
+    nc.innerHTML = `<div class="new-label">New this year</div><div class="new-value">${newThis.map(([s])=>s).join(" · ")}</div>`;
+  } else {
+    nc.innerHTML = "";
+  }
+
+  // Chapter list
+  const list = document.getElementById("chapter-list");
+  let html = "";
+  [...active].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([s,{year}]) => {
+    const isNew = year === selectedYear;
+    html += `<div class="chapter-row">
+      <span class="name${isNew?" new":""}">${s}</span>
+      <span class="year${isNew?" new":""}">${year}</span>
+    </div>`;
+  });
+  if (emerging.length) {
+    html += `<div class="emerging-header">Emerging</div>`;
+    [...emerging].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([s,{year}]) => {
+      html += `<div class="chapter-row">
+        <span class="name emerging">${s}</span>
+        <span class="year" style="color:#F8A8AB">${year}</span>
+      </div>`;
+    });
+  }
+  list.innerHTML = html;
+  document.getElementById("list-title").textContent =
+    `Active (${active.length}${emerging.length?" + "+emerging.length+" emerging":""})`;
+
+  // Legend
+  const items = [];
+  if (showChapters) {
+    items.push({color:C.PURPLE, label:"Active chapter"});
+    items.push({color:C.PURPLE_L, label:"New this year"});
+  }
+  if (showEmerging) {
+    items.push({color:C.RED, label:"Emerging chapter"});
+    items.push({color:C.RED_L, label:"New emerging"});
+  }
+  items.push({color:C.INACTIVE, label:"No chapter"});
+  document.getElementById("legend").innerHTML = items.map(({color,label}) =>
+    `<div class="legend-item"><div class="legend-swatch" style="background:${color}"></div><span>${label}</span></div>`
+  ).join("");
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+function onSlider(v) {
+  selectedYear = +v;
+  document.getElementById("slider-mid").textContent = v;
+  highlightPill(v);
+  render();
+}
+
+function highlightPill(y) {
+  document.querySelectorAll(".pill").forEach(p => {
+    p.classList.toggle("active", +p.dataset.year === +y);
+  });
+}
+
+function buildYearPills() {
+  const allYears = [...new Set(Object.values(stateMap).map(v=>v.year))].sort((a,b)=>a-b);
+  const min = allYears[0], max = allYears[allYears.length-1];
+  const slider = document.getElementById("year-slider");
+  slider.min = min; slider.max = max; slider.value = selectedYear;
+  document.getElementById("slider-min").textContent = min;
+  document.getElementById("slider-max").textContent = max;
+  document.getElementById("slider-mid").textContent = selectedYear;
+
+  document.getElementById("year-pills").innerHTML = allYears.map(yr =>
+    `<button class="pill${yr===selectedYear?" active":""}" data-year="${yr}" onclick="selectYear(${yr})">${yr}</button>`
+  ).join("");
+}
+
+function selectYear(y) {
+  selectedYear = y;
+  document.getElementById("year-slider").value = y;
+  document.getElementById("slider-mid").textContent = y;
+  highlightPill(y);
+  render();
+}
+
+function toggleChapters() {
+  showChapters = !showChapters;
+  const btn = document.getElementById("toggle-chapters");
+  btn.classList.toggle("on-purple", showChapters);
+  render();
+}
+
+function toggleEmerging() {
+  showEmerging = !showEmerging;
+  const btn = document.getElementById("toggle-emerging");
+  btn.classList.toggle("on-red", showEmerging);
+  render();
+}
+
+// ── Edit ──────────────────────────────────────────────────────────────────────
+function openEdit() {
+  document.getElementById("edit-view").style.display  = "none";
+  document.getElementById("edit-panel").style.display = "block";
+  document.getElementById("edit-textarea").value = mapToText(stateMap);
+}
+
+function closeEdit() {
+  document.getElementById("edit-view").style.display  = "block";
+  document.getElementById("edit-panel").style.display = "none";
+  document.getElementById("edit-error").style.display = "none";
+}
+
+function applyEdit() {
+  const txt = document.getElementById("edit-textarea").value;
+  const invalid = txt.trim().split("\n").filter(line => {
+    if (!line.trim()) return false;
+    const p = line.trim().split(",");
+    if (p.length < 2) return true;
+    const s = p[0].trim().toUpperCase();
+    const y = parseInt(p[1].trim());
+    return !ALL_STATES.includes(s) || isNaN(y);
+  });
+  const errEl = document.getElementById("edit-error");
+  const ta    = document.getElementById("edit-textarea");
+  if (invalid.length) {
+    errEl.textContent = "Invalid: " + invalid.slice(0,3).join("; ") + (invalid.length>3?"…":"");
+    errEl.style.display = "block";
+    ta.classList.add("error");
+    return;
+  }
+  errEl.style.display = "none";
+  ta.classList.remove("error");
+  stateMap = parseText(txt);
+  const ys = [...new Set(Object.values(stateMap).map(v=>v.year))].sort((a,b)=>a-b);
+  selectedYear = ys[ys.length-1] || selectedYear;
+  buildYearPills();
+  closeEdit();
+  render();
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportSVG() {
+  const svgEl  = document.getElementById("map-svg");
+  const clone  = svgEl.cloneNode(true);
+
+  // Embed styles inline on clone
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("viewBox", "0 0 960 600");
+  clone.style.background = "white";
+
+  // Add a white background rect
+  const bg = document.createElementNS("http://www.w3.org/2000/svg","rect");
+  bg.setAttribute("width","960"); bg.setAttribute("height","600"); bg.setAttribute("fill","white");
+  clone.insertBefore(bg, clone.firstChild);
+
+  // Title
+  const titleEl = document.createElementNS("http://www.w3.org/2000/svg","text");
+  titleEl.setAttribute("x","480"); titleEl.setAttribute("y","18");
+  titleEl.setAttribute("text-anchor","middle"); titleEl.setAttribute("font-family","'Trebuchet MS',Georgia,serif");
+  titleEl.setAttribute("font-size","14"); titleEl.setAttribute("font-weight","800");
+  titleEl.setAttribute("fill","#6B2D8B");
+  titleEl.textContent = `Gift of Adoption – Chapter Map ${selectedYear}`;
+  clone.insertBefore(titleEl, clone.firstChild.nextSibling);
+
+  const blob = new Blob([clone.outerHTML], {type:"image/svg+xml"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `GOA_Chapter_Map_${selectedYear}.svg`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportPNG() {
+  const svgEl = document.getElementById("map-svg");
+  const W = 1920, H = 1200;
+
+  const clone = svgEl.cloneNode(true);
+  clone.setAttribute("xmlns","http://www.w3.org/2000/svg");
+  clone.setAttribute("width", W); clone.setAttribute("height", H);
+  clone.setAttribute("viewBox","0 0 960 600");
+
+  const bg = document.createElementNS("http://www.w3.org/2000/svg","rect");
+  bg.setAttribute("width","960"); bg.setAttribute("height","600"); bg.setAttribute("fill","white");
+  clone.insertBefore(bg, clone.firstChild);
+
+  const titleEl = document.createElementNS("http://www.w3.org/2000/svg","text");
+  titleEl.setAttribute("x","480"); titleEl.setAttribute("y","18");
+  titleEl.setAttribute("text-anchor","middle"); titleEl.setAttribute("font-family","'Trebuchet MS',Georgia,serif");
+  titleEl.setAttribute("font-size","14"); titleEl.setAttribute("font-weight","800");
+  titleEl.setAttribute("fill","#6B2D8B");
+  titleEl.textContent = `Gift of Adoption – Chapter Map ${selectedYear}`;
+  clone.insertBefore(titleEl, clone.firstChild.nextSibling);
+
+  const svgStr = new XMLSerializer().serializeToString(clone);
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "white"; ctx.fillRect(0,0,W,H);
+    ctx.drawImage(img, 0, 0, W, H);
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = `GOA_Chapter_Map_${selectedYear}.png`;
+    a.click();
+  };
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+buildYearPills();
+initMap();
+</script>
+</body>
+</html>
